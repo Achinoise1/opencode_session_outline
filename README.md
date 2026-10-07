@@ -8,10 +8,23 @@ This is a first-pass plugin implementation. It focuses on a stable `/outline` co
 
 ## Usage
 
-Configure the plugin in `opencode.jsonc`:
+This is a **TUI plugin**, not a server plugin. TUI plugins must be registered
+in a separate `tui.json` file (schema `https://opencode.ai/tui.json`), not in
+the top-level `"plugin"` array of `opencode.json`/`opencode.jsonc` (that array
+is for server plugins exporting `server()` and will fail to load a `tui()`
+export).
+
+Create or edit:
+
+```txt
+~/.config/opencode/tui.json
+```
+
+(or a project-local `.opencode/tui.json`)
 
 ```jsonc
 {
+  "$schema": "https://opencode.ai/tui.json",
   "plugin": [
     [
       "C:/Users/WillowWei/Documents/code/opencode_session_outline/dist/src/index.js",
@@ -37,6 +50,7 @@ or press the configured keybinding.
 ## Behavior
 
 - Lists user messages from the active session.
+- Filters trivial prompts like `continue`, `retry`, `继续`, and `重试` when meaningful prompts exist.
 - Shows a searchable `DialogSelect` picker.
 - Selecting an item attempts to scroll the message view to that user message.
 - If the target message is not currently rendered by the TUI, the plugin shows a warning toast.

@@ -7,12 +7,12 @@ export function createOutlineItems(input: {
   truncate: number
 }): OutlineItem[] {
   let index = 0
-  const items: OutlineItem[] = []
+  const allItems: OutlineItem[] = []
   for (const message of input.messages) {
     if (message.role !== "user") continue
     index += 1
     const title = extractQuestionTitle(input.parts(message.id), input.truncate) || `User message #${index}`
-    items.push({
+    allItems.push({
       index,
       sessionID: input.sessionID,
       messageID: message.id,
@@ -20,7 +20,8 @@ export function createOutlineItems(input: {
       timeCreated: message.time?.created,
     })
   }
-  return items
+  const filtered = allItems.filter((item) => !isTrivialPrompt(item.title))
+  return filtered.length > 0 ? reindexItems(filtered) : allItems
 }
 
 export function extractQuestionTitle(parts: readonly PartLike[], maxLength: number) {
@@ -40,6 +41,28 @@ export function truncateText(input: string, maxLength: number) {
   if (maxLength <= 0 || input.length <= maxLength) return input
   if (maxLength === 1) return "…"
   return `${input.slice(0, maxLength - 1)}…`
+}
+
+export function isTrivialPrompt(input: string) {
+  const normalized = normalizeText(input).toLowerCase()
+  return trivialPrompts.has(normalized)
+}
+
+const trivialPrompts = new Set([
+  "continue",
+  "retry",
+  "again",
+  "ok",
+  "yes",
+  "继续",
+  "重试",
+  "再试一次",
+  "执行",
+  "可以",
+])
+
+function reindexItems(items: OutlineItem[]) {
+  return items.map((item, index) => ({ ...item, index: index + 1 }))
 }
 
 function textFromPart(part: PartLike) {

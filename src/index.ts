@@ -1,6 +1,6 @@
 import type { TuiDialogSelectOption, TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { parseOptions } from "./config.js"
-import { jumpToMessage } from "./jump.js"
+import { jumpToMessageAsync } from "./jump.js"
 import { createOutlineItems } from "./outline.js"
 import type { OutlineItem } from "./types.js"
 
@@ -42,15 +42,16 @@ const tui: TuiPlugin = async (api, options) => {
         options: items.map(toOption),
         onSelect: (option) => {
           api.ui.dialog.clear()
-          const result = jumpToMessage(api, option.value.messageID)
-          if (result === "missing") {
-            api.ui.toast({
-              variant: "warning",
-              message: "That message is not currently rendered. Scroll nearer to it and try again.",
-            })
-          } else if (result === "unavailable") {
-            api.ui.toast({ variant: "warning", message: "Unable to jump in this OpenCode TUI view." })
-          }
+          void jumpToMessageAsync(api, option.value.messageID).then((result) => {
+            if (result === "missing") {
+              api.ui.toast({
+                variant: "warning",
+                message: "That message is not currently rendered. Scroll nearer to it and try again.",
+              })
+            } else if (result === "unavailable") {
+              api.ui.toast({ variant: "warning", message: "Unable to jump in this OpenCode TUI view." })
+            }
+          })
         },
       }),
     )

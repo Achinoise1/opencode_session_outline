@@ -5,10 +5,8 @@ type RenderableLike = {
   id?: unknown
   name?: unknown
   y?: unknown
-  scrollY?: unknown
   scrollBy?: unknown
-  children?: unknown
-  parent?: unknown
+  getChildren?: unknown
 }
 
 export function jumpToMessage(api: TuiPluginApi, messageID: string): JumpResult {
@@ -16,32 +14,57 @@ export function jumpToMessage(api: TuiPluginApi, messageID: string): JumpResult 
   const root = renderer.root as RenderableLike | undefined
   if (!root) return "unavailable"
 
-  const target = findRenderable(root, messageID)
-  if (!target) return "missing"
+  for (const targetID of targetIDs(messageID)) {
+    const hit = findRenderableTarget(root, targetID)
+    if (!hit) continue
+    const targetY = typeof hit.target.y === "number" ? hit.target.y : 0
+    const scrollY = typeof hit.scroll.y === "number" ? hit.scroll.y : 0
+    const scrollBy = hit.scroll.scrollBy as ((amount: number) => void) | undefined
+    if (typeof scrollBy !== "function") return "unavailable"
+    scrollBy.call(hit.scroll, targetY - scrollY - 1)
+    return "ok"
+  }
 
-  const scroller = findScroller(target)
-  if (!scroller) return "unavailable"
-
-  const targetY = typeof target.y === "number" ? target.y : 0
-  const scrollY = typeof scroller.scrollY === "number" ? scroller.scrollY : 0
-  const delta = targetY - scrollY
-  const scrollBy = scroller.scrollBy as ((amount: number) => void) | undefined
-  if (typeof scrollBy !== "function") return "unavailable"
-  scrollBy.call(scroller, delta)
-  return "ok"
+  return "missing"
 }
 
-function findRenderable(root: RenderableLike, targetID: string): RenderableLike | undefined {
-  const queue: RenderableLike[] = [root]
-  const seen = new Set<RenderableLike>()
-  while (queue.length > 0) {
-    const current = queue.shift()
-    if (!current || seen.has(current)) continue
-    seen.add(current)
-    if (matchesID(current, targetID)) return current
-    for (const child of childrenOf(current)) queue.push(child)
+export function jumpToMessageAsync(api: TuiPluginApi, messageID: string, timeout = 1_000): Promise<JumpResult> {
+  const started = Date.now()
+  return new Promise((resolve) => {
+    const tick = () => {
+      const result = jumpToMessage(api, messageID)
+      if (result !== "missing" || Date.now() - started >= timeout) {
+        resolve(result)
+        return
+      }
+      setTimeout(tick, 50)
+    }
+    setTimeout(tick, 50)
+  })
+}
+
+function targetIDs(messageID: string) {
+  return [messageID, `text-${messageID}`, `message-${messageID}`]
+}
+
+function findRenderableTarget(
+  node: unknown,
+  targetID: string,
+  scroll?: RenderableLike,
+): { target: RenderableLike; scroll: RenderableLike } | undefined {
+  if (!isRenderableLike(node)) return undefined
+  const nextScroll = isScrollNode(node) ? node : scroll
+  if (matchesID(node, targetID) && nextScroll) return { target: node, scroll: nextScroll }
+
+  for (const child of childrenOf(node)) {
+    const result = findRenderableTarget(child, targetID, nextScroll)
+    if (result) return result
   }
   return undefined
+}
+
+function isScrollNode(renderable: RenderableLike) {
+  return typeof renderable.scrollBy === "function"
 }
 
 function matchesID(renderable: RenderableLike, targetID: string) {
@@ -49,21 +72,15 @@ function matchesID(renderable: RenderableLike, targetID: string) {
 }
 
 function childrenOf(renderable: RenderableLike): RenderableLike[] {
-  const children = renderable.children
+  const getChildren = renderable.getChildren as (() => unknown[]) | undefined
+  if (typeof getChildren === "function") return getChildren.call(renderable).filter(isRenderableLike)
+
+  const children = (renderable as { children?: unknown }).children
   if (Array.isArray(children)) return children.filter(isRenderableLike)
   if (children && typeof children === "object" && Symbol.iterator in children) {
     return Array.from(children as Iterable<unknown>).filter(isRenderableLike)
   }
   return []
-}
-
-function findScroller(target: RenderableLike): RenderableLike | undefined {
-  let current: RenderableLike | undefined = target
-  while (current) {
-    if (typeof current.scrollBy === "function") return current
-    current = isRenderableLike(current.parent) ? current.parent : undefined
-  }
-  return undefined
 }
 
 function isRenderableLike(value: unknown): value is RenderableLike {

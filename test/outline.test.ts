@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { createOutlineItems, extractQuestionTitle, normalizeText, truncateText } from "../src/outline.js"
+import { createOutlineItems, extractQuestionTitle, isTrivialPrompt, normalizeText, truncateText } from "../src/outline.js"
 
 describe("outline extraction", () => {
   it("normalizes whitespace", () => {
@@ -47,6 +47,56 @@ describe("outline extraction", () => {
         timeCreated: 3,
       },
     ])
+  })
+
+  it("filters trivial user prompts when meaningful prompts exist", () => {
+    const parts = new Map([
+      ["u1", [{ type: "text", text: "continue" }]],
+      ["u2", [{ type: "text", text: "How do I test the plugin?" }]],
+      ["u3", [{ type: "text", text: "retry" }]],
+    ])
+
+    assert.deepEqual(createOutlineItems({
+      sessionID: "ses_test",
+      messages: [
+        { id: "u1", role: "user" },
+        { id: "u2", role: "user" },
+        { id: "u3", role: "user" },
+      ],
+      parts: (messageID) => parts.get(messageID) ?? [],
+      truncate: 80,
+    }), [
+      {
+        index: 1,
+        sessionID: "ses_test",
+        messageID: "u2",
+        title: "How do I test the plugin?",
+        timeCreated: undefined,
+      },
+    ])
+  })
+
+  it("keeps trivial prompts when all prompts are trivial", () => {
+    const parts = new Map([
+      ["u1", [{ type: "text", text: "continue" }]],
+      ["u2", [{ type: "text", text: "retry" }]],
+    ])
+
+    assert.equal(createOutlineItems({
+      sessionID: "ses_test",
+      messages: [
+        { id: "u1", role: "user" },
+        { id: "u2", role: "user" },
+      ],
+      parts: (messageID) => parts.get(messageID) ?? [],
+      truncate: 80,
+    }).length, 2)
+  })
+
+  it("detects trivial prompts", () => {
+    assert.equal(isTrivialPrompt(" continue "), true)
+    assert.equal(isTrivialPrompt("重试"), true)
+    assert.equal(isTrivialPrompt("How do I test it?"), false)
   })
 
   it("falls back for empty user messages", () => {
